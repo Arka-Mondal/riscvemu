@@ -19,9 +19,15 @@ int main(int argc, char * argv[])
   bus_init(&bus, &mem);
   riscv_cpu_init(&cpu1, &bus);
 
-  cpu1.x1 = 5;
+  cpu1.registers[x1] = 5;
 
-  printf("CPU1: %lu %lu\n", cpu1.x0, cpu1.x1);
+  printf("%#lx\n", cpu1.registers[x1]);
+
+  riscv_cpu_exec(&cpu1, 0x3e800093);
+  riscv_cpu_exec(&cpu1, 0x00108133);
+
+  printf("%#lx\n", cpu1.registers[x1]);
+  printf("%#lx\n", cpu1.registers[x2]);
 
   riscv_cpu_deinit(&cpu1);
   bus_deinit(&bus);

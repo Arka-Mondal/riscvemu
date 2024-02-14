@@ -6,7 +6,7 @@
 
 CC := gcc
 CFLAGS := -Wall -Wextra
-OBJECTS = cpu.o bus.o dram.o main.o
+OBJECTS = cpu.o bus.o dram.o util.o main.o
 
 riscv : $(OBJECTS)
 	$(CC) -o $@ $^
@@ -21,6 +21,9 @@ bus.o : bus.c bus.h
 	$(CC) -o $@ -c $< $(CFLAGS)
 
 dram.o : dram.c dram.h
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+util.o : util.c util.h
 	$(CC) -o $@ -c $< $(CFLAGS)
 
 .PHONY : clean

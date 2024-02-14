@@ -10,41 +10,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
+enum register_names {
+  x0,   x1,  x2,  x3,  x4,  x5,  x6,  x7,  x8,  x9, x10, x11, x12, x13, x14, x15,
+  x16, x17, x18, x19, x20, x21, x22, x23, x24, x25, x26, x27, x28, x29, x30, x31
+};
+
 struct riscv_cpu {
 
   // 32 general purpose registers
-  const uint64_t x0;
-  uint64_t x1;
-  uint64_t x2;
-  uint64_t x3;
-  uint64_t x4;
-  uint64_t x5;
-  uint64_t x6;
-  uint64_t x7;
-  uint64_t x8;
-  uint64_t x9;
-  uint64_t x10;
-  uint64_t x11;
-  uint64_t x12;
-  uint64_t x13;
-  uint64_t x14;
-  uint64_t x15;
-  uint64_t x16;
-  uint64_t x17;
-  uint64_t x18;
-  uint64_t x19;
-  uint64_t x20;
-  uint64_t x21;
-  uint64_t x22;
-  uint64_t x23;
-  uint64_t x24;
-  uint64_t x25;
-  uint64_t x26;
-  uint64_t x27;
-  uint64_t x28;
-  uint64_t x29;
-  uint64_t x30;
-  uint64_t x31;
+  uint64_t registers[32];
 
   // program counter
   uint64_t pc;
@@ -57,6 +31,23 @@ struct riscv_cpu {
 };
 
 int riscv_cpu_init(struct riscv_cpu * const restrict, struct bus * const);
+uint32_t riscv_cpu_fetch(const struct riscv_cpu * const restrict);
+int riscv_cpu_exec(struct riscv_cpu * const restrict, uint32_t);
 int riscv_cpu_deinit(struct riscv_cpu * const restrict);
+
+uint64_t riscv_inst_rd(uint32_t);
+uint64_t riscv_inst_rs1(uint32_t);
+uint64_t riscv_inst_rs2(uint32_t);
+uint64_t riscv_insti_imm(uint32_t);
+uint64_t riscv_insts_imm(uint32_t);
+uint64_t riscv_instb_imm(uint32_t);
+uint64_t riscv_instu_imm(uint32_t);
+uint64_t riscv_instj_imm(uint32_t);
+
+int riscv_cpu_insti_exec(struct riscv_cpu * const restrict, uint32_t);
+int riscv_cpu_instr_exec(struct riscv_cpu * const restrict, uint32_t);
+
+int riscv_cpu_addi_exec(struct riscv_cpu * const restrict, uint32_t);
+int riscv_cpu_add_exec(struct riscv_cpu * const restrict, uint32_t);
 
 #endif /* _RISCVEMU_CPU_H */
