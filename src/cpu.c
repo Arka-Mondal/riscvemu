@@ -140,7 +140,7 @@ uint64_t riscv_insts_imm(uint32_t inst)
 // B-type instruction
 uint64_t riscv_instb_imm(uint32_t inst)
 {
-  return (((int64_t) (int32_t) (inst & (0x1 << 31))) >> 19)
+  return (((int64_t) (int32_t) (inst & 0x80000000)) >> 19)
           | ((inst << 4) & 0x800)
           | ((inst >> 20) & 0x7e0)
           | ((inst >> 7) & 0x1e);
@@ -155,7 +155,7 @@ uint64_t riscv_instu_imm(uint32_t inst)
 // J-type instruction
 uint64_t riscv_instj_imm(uint32_t inst)
 {
-  return (((int64_t) (int32_t) (inst & (0x1 << 31))) >> 11)
+  return (((int64_t) (int32_t) (inst & 0x80000000)) >> 11)
           | ((inst >> 20) & 0x7fe)
           | ((inst >> 9) & 0x800)
           | (inst & 0xff000);
