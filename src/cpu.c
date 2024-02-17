@@ -4,6 +4,7 @@
   can be found in the LICENSE file.
 */
 
+#include <assert.h>
 #include <string.h>
 #include "cpu.h"
 #include "bus.h"
@@ -76,13 +77,14 @@ int riscv_cpu_exec(struct riscv_cpu * const restrict cpu, uint32_t inst)
   switch (opcode)
   {
     case 0x13:
+    case 0x1b:
       riscv_cpu_insti_exec(cpu, inst);
       break;
     case 0x33:
       riscv_cpu_instr_exec(cpu, inst);
       break;
     default:
-      hart_panic("not implemented! %#x\n", opcode);
+      hart_panic("not implemented! %#04x\n", opcode);
   }
 
   return 0;
@@ -164,17 +166,108 @@ uint64_t riscv_instj_imm(uint32_t inst)
 // execute I-type instructions
 int riscv_cpu_insti_exec(struct riscv_cpu * const restrict cpu, uint32_t inst)
 {
-  unsigned int funct3;
+  uint32_t opcode = inst & 0x7f;
+  uint32_t rd = riscv_inst_rd(inst);
+  uint32_t funct3 = (inst >> 12) & 0x7;
+  uint32_t rs1 = riscv_inst_rs1(inst);
+  uint64_t imm = riscv_insti_imm(inst);
 
-  funct3 = (inst >> 12) & 0x7;
-
-  switch (funct3)
+  switch (opcode)
   {
-    case 0x0:
-      riscv_cpu_addi_exec(cpu, inst);
+    case 0x13:
+      switch (funct3) {
+        case 0x0: // ADDI
+          cpu->registers[rd] = cpu->registers[rs1] + imm;
+          break;
+
+        case 0x2: // SLTI
+          cpu->registers[rd] = (int64_t) cpu->registers[rs1] < (int64_t) imm;
+          break;
+
+        case 0x3: // SLTIU
+          cpu->registers[rd] = cpu->registers[rs1] < imm;
+          break;
+
+        case 0x4: // XORI
+          cpu->registers[rd] = cpu->registers[rs1] ^ imm;
+          break;
+
+        case 0x6: // ORI
+          cpu->registers[rd] = cpu->registers[rs1] | imm;
+          break;
+
+        case 0x7: // ANDI
+          cpu->registers[rd] = cpu->registers[rs1] & imm;
+          break;
+
+        case 0x1: { // SLLI
+          uint64_t shift = imm & 0x3f;
+          assert((imm >> 6) == 0);
+          cpu->registers[rd] = cpu->registers[rs1] << shift;
+          break;
+        }
+
+        case 0x5: {
+          uint64_t shift = imm & 0x3f;
+          switch (imm >> 6) {
+            case 0x00: // SRLI
+              cpu->registers[rd] = cpu->registers[rs1] >> shift;
+              break;
+
+            case 0x20: // SRAI
+              cpu->registers[rd] = (uint64_t) ((int64_t) cpu->registers[rs1] >> (int64_t) shift);
+              break;
+
+            default:
+              hart_panic("not implemented! 0b0010011(%#03x)\n", funct3);
+          }
+          break;
+        }
+
+        default:
+          hart_panic("not implemented! 0b0010011(%#03x)\n", funct3);
+      }
       break;
+
+    case 0x1b:
+      switch (funct3) {
+        case 0x0: // ADDIW
+          cpu->registers[rd] = (int64_t) (int32_t) ((cpu->registers[rs1] + imm) & 0xffffffff);
+          break;
+
+        case 0x1: { // SLLIW
+          uint32_t shift = imm & 0x3f;
+          assert(~shift >> 5 & 1); // Assert if the shamt[5] is 0.
+          cpu->registers[rd] = (int64_t) (int32_t) ((uint32_t) cpu->registers[rs1] << shift);
+          break;
+        }
+
+        case 0x5: {
+          uint32_t shift = imm & 0x3f;
+          assert(~shift >> 5 & 1); // Assert if the shamt[5] is 0.
+
+          switch (imm >> 6) {
+            case 0x00: // SRLIW
+              cpu->registers[rd] = (int64_t) (int32_t) ((uint32_t) cpu->registers[rs1] >> shift);
+              break;
+
+            case 0x20: // SRAIW
+              cpu->registers[rd] = (int64_t) (int32_t) ((int32_t) (uint32_t) cpu->registers[rs1] >> shift);
+              break;
+
+            default:
+              hart_panic("not implemented! 0b0011011(%#03x)\n", funct3);
+          }
+          break;
+        }
+
+        default:
+          hart_panic("not implemented! 0b0011011(%#03x)\n", funct3);
+      }
+      break;
+
     default:
-      hart_panic("not implemented! 0x0010011(%#x)\n", funct3);
+      hart_panic("not implemented! %#04x\n", opcode);
   }
 
   return 0;
