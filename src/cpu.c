@@ -4,7 +4,6 @@
   can be found in the LICENSE file.
 */
 
-#include <assert.h>
 #include <string.h>
 #include "cpu.h"
 #include "bus.h"
@@ -203,8 +202,14 @@ int riscv_cpu_insti_exec(struct riscv_cpu * const restrict cpu, uint32_t inst)
 
         case 0x1: { // SLLI
           uint64_t shift = imm & 0x3f;
-          assert((imm >> 6) == 0);
-          cpu->registers[rd] = cpu->registers[rs1] << shift;
+          switch (imm >> 6) {
+            case 0x00: // SLLI
+              cpu->registers[rd] = cpu->registers[rs1] << shift;
+              break;
+
+            default:
+              hart_panic("not implemented! 0b0010011(%#03x)\n", funct3);
+          }
           break;
         }
 
@@ -238,14 +243,18 @@ int riscv_cpu_insti_exec(struct riscv_cpu * const restrict cpu, uint32_t inst)
 
         case 0x1: { // SLLIW
           uint32_t shift = imm & 0x3f;
-          assert(~shift >> 5 & 1); // Assert if the shamt[5] is 0.
+          if (shift >> 5 & 1) {
+            hart_panic("not implemented! 0b0011011(%#03x)\n", funct3);
+          }
           cpu->registers[rd] = (int64_t) (int32_t) ((uint32_t) cpu->registers[rs1] << shift);
           break;
         }
 
         case 0x5: {
           uint32_t shift = imm & 0x3f;
-          assert(~shift >> 5 & 1); // Assert if the shamt[5] is 0.
+          if (shift >> 5 & 1) {
+            hart_panic("not implemented! 0b0011011(%#03x)\n", funct3);
+          }
 
           switch (imm >> 6) {
             case 0x00: // SRLIW
@@ -378,7 +387,9 @@ int riscv_cpu_instr_exec(struct riscv_cpu * const restrict cpu, uint32_t inst)
           switch (funct7) {
             case 0x00: { // SLLW
               uint64_t shift = cpu->registers[rs2] & 0x3f;
-              assert(~shift >> 5 & 1); // Assert if the shamt[5] is 0.
+              if (shift >> 5 & 1) {
+                hart_panic("not implemented! 0x0111011(%#03x:%#04x)\n", funct3, funct7);
+              }
               cpu->registers[rd] = cpu->registers[rs1] << shift;
               break;
             }
@@ -392,14 +403,18 @@ int riscv_cpu_instr_exec(struct riscv_cpu * const restrict cpu, uint32_t inst)
           switch (funct7) {
             case 0x00: { // SRLW
               uint64_t shift = cpu->registers[rs2] & 0x3f;
-              assert(~shift >> 5 & 1); // Assert if the shamt[5] is 0.
+              if (shift >> 5 & 1) {
+                hart_panic("not implemented! 0x0111011(%#03x:%#04x)\n", funct3, funct7);
+              }
               cpu->registers[rd] = cpu->registers[rs1] >> shift;
               break;
             }
 
             case 0x20: { // SRAW
               uint64_t shift = cpu->registers[rs2] & 0x3f;
-              assert(~shift >> 5 & 1); // Assert if the shamt[5] is 0.
+              if (shift >> 5 & 1) {
+                hart_panic("not implemented! 0x0111011(%#03x:%#04x)\n", funct3, funct7);
+              }
               cpu->registers[rd] = (int64_t) cpu->registers[rs1] >> (int64_t) shift;
               break;
             }
