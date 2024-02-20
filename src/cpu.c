@@ -76,13 +76,15 @@ int riscv_cpu_exec(struct riscv_cpu * const restrict cpu, uint32_t inst)
   switch (opcode)
   {
     case 0x13:
+    case 0x1b:
       riscv_cpu_insti_exec(cpu, inst);
       break;
     case 0x33:
+    case 0x3b:
       riscv_cpu_instr_exec(cpu, inst);
       break;
     default:
-      hart_panic("not implemented! %#x\n", opcode);
+      hart_panic("not implemented! %#04x\n", opcode);
   }
 
   return 0;
@@ -140,7 +142,7 @@ uint64_t riscv_insts_imm(uint32_t inst)
 // B-type instruction
 uint64_t riscv_instb_imm(uint32_t inst)
 {
-  return (((int64_t) (int32_t) (inst & (0x1 << 31))) >> 19)
+  return (((int64_t) (int32_t) (inst & 0x80000000)) >> 19)
           | ((inst << 4) & 0x800)
           | ((inst >> 20) & 0x7e0)
           | ((inst >> 7) & 0x1e);
@@ -155,47 +157,271 @@ uint64_t riscv_instu_imm(uint32_t inst)
 // J-type instruction
 uint64_t riscv_instj_imm(uint32_t inst)
 {
-  return (((int64_t) (int32_t) (inst & (0x1 << 31))) >> 11)
+  return (((int64_t) (int32_t) (inst & 0x80000000)) >> 11)
           | ((inst >> 20) & 0x7fe)
           | ((inst >> 9) & 0x800)
           | (inst & 0xff000);
 }
 
-// execute I-type instructions
+// Execute I-type instructions.
 int riscv_cpu_insti_exec(struct riscv_cpu * const restrict cpu, uint32_t inst)
 {
-  unsigned int funct3;
+  uint32_t opcode = inst & 0x7f;
+  uint32_t rd = riscv_inst_rd(inst);
+  uint32_t funct3 = (inst >> 12) & 0x7;
+  uint32_t rs1 = riscv_inst_rs1(inst);
+  uint64_t imm = riscv_insti_imm(inst);
 
-  funct3 = (inst >> 12) & 0x7;
-
-  switch (funct3)
+  switch (opcode)
   {
-    case 0x0:
-      riscv_cpu_addi_exec(cpu, inst);
+    case 0x13:
+      switch (funct3) {
+        case 0x0: // ADDI
+          cpu->registers[rd] = cpu->registers[rs1] + imm;
+          break;
+
+        case 0x2: // SLTI
+          cpu->registers[rd] = (int64_t) cpu->registers[rs1] < (int64_t) imm;
+          break;
+
+        case 0x3: // SLTIU
+          cpu->registers[rd] = cpu->registers[rs1] < imm;
+          break;
+
+        case 0x4: // XORI
+          cpu->registers[rd] = cpu->registers[rs1] ^ imm;
+          break;
+
+        case 0x6: // ORI
+          cpu->registers[rd] = cpu->registers[rs1] | imm;
+          break;
+
+        case 0x7: // ANDI
+          cpu->registers[rd] = cpu->registers[rs1] & imm;
+          break;
+
+        case 0x1: {
+          uint64_t shift = imm & 0x3f;
+          switch (imm >> 6) {
+            case 0x00: // SLLI
+              cpu->registers[rd] = cpu->registers[rs1] << shift;
+              break;
+
+            default:
+              hart_panic("not implemented! 0b0010011(%#03x)\n", funct3);
+          }
+          break;
+        }
+
+        case 0x5: {
+          uint64_t shift = imm & 0x3f;
+          switch (imm >> 6) {
+            case 0x00: // SRLI
+              cpu->registers[rd] = cpu->registers[rs1] >> shift;
+              break;
+
+            case 0x10: // SRAI
+              cpu->registers[rd] = (uint64_t) ((int64_t) cpu->registers[rs1] >> (int64_t) shift);
+              break;
+
+            default:
+              hart_panic("not implemented! 0b0010011(%#03x)\n", funct3);
+          }
+          break;
+        }
+
+        default:
+          hart_panic("not implemented! 0b0010011(%#03x)\n", funct3);
+      }
       break;
+
+    case 0x1b:
+      switch (funct3) {
+        case 0x0: // ADDIW
+          cpu->registers[rd] = (int64_t) (int32_t) ((uint32_t) cpu->registers[rs1] + (uint32_t) imm);
+          break;
+
+        case 0x1: { // SLLIW
+          uint64_t shift = imm & 0x1f;
+          switch (imm >> 5) {
+            case 0x00:
+              cpu->registers[rd] = (int64_t) (int32_t) ((uint32_t) cpu->registers[rs1] << (uint32_t) shift);
+              break;
+            default:
+              hart_panic("not implemented! 0b0011011(%#03x)\n", funct3);
+          }
+          break;
+        }
+
+        case 0x5: {
+          uint64_t shift = imm & 0x1f;
+          switch (imm >> 5) {
+            case 0x00: // SRLIW
+              cpu->registers[rd] = (int64_t) (int32_t) ((uint32_t) cpu->registers[rs1] >> (uint32_t) shift);
+              break;
+
+            case 0x20: // SRAIW
+              cpu->registers[rd] = (int64_t) (int32_t) ((int32_t) (uint32_t) cpu->registers[rs1] >> (int32_t) shift);
+              break;
+
+            default:
+              hart_panic("not implemented! 0b0011011(%#03x)\n", funct3);
+          }
+          break;
+        }
+
+        default:
+          hart_panic("not implemented! 0b0011011(%#03x)\n", funct3);
+      }
+      break;
+
     default:
-      hart_panic("not implemented! 0x0010011(%#x)\n", funct3);
+      hart_panic("not implemented! %#04x\n", opcode);
   }
 
   return 0;
 }
 
-// execute R-type instructions
+// Execute R-type instructions.
 int riscv_cpu_instr_exec(struct riscv_cpu * const restrict cpu, uint32_t inst)
 {
-  unsigned int funct3, funct7;
+  uint32_t opcode = inst & 0x7f;
+  uint32_t rd = riscv_inst_rd(inst);
+  uint32_t funct3 = (inst >> 12) & 0x7;
+  uint32_t rs1 = riscv_inst_rs1(inst);
+  uint32_t rs2 = riscv_inst_rs2(inst);
+  uint32_t funct7 = (inst >> 25) & 0x7f;
 
-  funct3 = (inst >> 12) & 0x7;
-  funct7 = (inst >> 25) & 0x7f;
-
-  switch (funct3)
+  switch (opcode)
   {
-    case 0x0:
-      (funct7 == 0x0) ? riscv_cpu_add_exec(cpu, inst)
-      : hart_panic("not implemented! 0x0110011(%#x:%#x)\n", funct3,funct7);
+    case 0x33:
+      switch (funct3)
+      {
+        case 0x0:
+          switch (funct7)
+          {
+            case 0x00: // ADD
+              cpu->registers[rd] = cpu->registers[rs1] + cpu->registers[rs2];
+              break;
+
+            case 0x20: // SUB
+              cpu->registers[rd] = cpu->registers[rs1] - cpu->registers[rs2];
+              break;
+
+            default:
+              hart_panic("not implemented! 0x0110011(%#03x:%#04x)\n", funct3, funct7);
+          }
+          break;
+
+        case 0x1: // SLL
+          (funct7 == 0x0) ? cpu->registers[rd] = cpu->registers[rs1] << (cpu->registers[rs2] & 0x3f)
+            : hart_panic("not implemented! 0x0110011(%#03x:%#04x)\n", funct3, funct7);
+          break;
+
+        case 0x2: // SLT
+          (funct7 == 0x0) ? cpu->registers[rd] = (int64_t) cpu->registers[rs1] < (int64_t) cpu->registers[rs2]
+            : hart_panic("not implemented! 0x0110011(%#03x:%#04x)\n", funct3, funct7);
+          break;
+
+        case 0x3: // SLTU
+          (funct7 == 0x0) ? cpu->registers[rd] = cpu->registers[rs1] < cpu->registers[rs2]
+            : hart_panic("not implemented! 0x0110011(%#03x:%#04x)\n", funct3, funct7);
+          break;
+
+        case 0x4: // XOR
+          (funct7 == 0x0) ? cpu->registers[rd] = cpu->registers[rs1] ^ cpu->registers[rs2]
+            : hart_panic("not implemented! 0x0110011(%#03x:%#04x)\n", funct3, funct7);
+          break;
+
+        case 0x5:
+          switch (funct7)
+          {
+            case 0x0: // SRL
+              cpu->registers[rd] = cpu->registers[rs1] >> (cpu->registers[rs2] & 0x3f);
+              break;
+
+            case 0x20: // SRA
+              cpu->registers[rd] = (int64_t) cpu->registers[rs1] >> (int64_t) (cpu->registers[rs2] & 0x3f);
+              break;
+
+            default:
+              hart_panic("not implemented! 0x0110011(%#03x:%#04x)\n", funct3, funct7);
+          }
+          break;
+
+        case 0x6: // OR
+          (funct7 == 0x0) ? cpu->registers[rd] = cpu->registers[rs1] | cpu->registers[rs2]
+            : hart_panic("not implemented! 0x0110011(%#03x:%#04x)\n", funct3, funct7);
+          break;
+
+        case 0x7: // AND
+          (funct7 == 0x0) ? cpu->registers[rd] = cpu->registers[rs1] & cpu->registers[rs2]
+            : hart_panic("not implemented! 0x0110011(%#03x:%#04x)\n", funct3, funct7);
+          break;
+
+        default:
+          hart_panic("not implemented! 0x0110011(%#03x)\n", funct3);
+      }
       break;
+
+    case 0x3b:
+      switch (funct3)
+      {
+        case 0x0:
+          switch (funct7) {
+            case 0x0: // ADDW
+              cpu->registers[rd] = (int64_t) (int32_t) ((uint32_t) cpu->registers[rs1] + (uint32_t) cpu->registers[rs2]);
+              break;
+
+            case 0x20: // SUBW
+              cpu->registers[rd] = (int64_t) (int32_t) ((uint32_t) cpu->registers[rs1] - (uint32_t) cpu->registers[rs2]);
+              break;
+
+            default:
+              hart_panic("not implemented! 0x0111011(%#03x:%#04x)\n", funct3, funct7);
+          }
+          break;
+
+        case 0x1:
+          switch (funct7) {
+            case 0x00: { // SLLW
+              uint64_t shift = cpu->registers[rs2] & 0x1f;
+              cpu->registers[rd] = (int64_t) (int32_t) ((uint32_t) cpu->registers[rs1] << (uint32_t) shift);
+              break;
+            }
+
+            default:
+              hart_panic("not implemented! 0x0111011(%#03x:%#04x)\n", funct3, funct7);
+          }
+          break;
+
+        case 0x5:
+          switch (funct7) {
+            case 0x00: { // SRLW
+              uint64_t shift = cpu->registers[rs2] & 0x1f;
+              cpu->registers[rd] = (int64_t) (int32_t) ((uint32_t) cpu->registers[rs1] >> (uint32_t) shift);
+              break;
+            }
+
+            case 0x20: { // SRAW
+              uint64_t shift = cpu->registers[rs2] & 0x1f;
+              cpu->registers[rd] = (int64_t) (int32_t) ((int32_t) (uint32_t) cpu->registers[rs1] >> (int32_t) shift);
+              break;
+            }
+
+            default:
+              hart_panic("not implemented! 0x0111011(%#03x:%#04x)\n", funct3, funct7);
+          }
+          break;
+
+        default:
+          hart_panic("not implemented! 0x0111011(%#03x)\n", funct3);
+      }
+
+      break;
+
     default:
-      hart_panic("not implemented! 0x0110011(%#x)\n", funct3);
+      hart_panic("not implemented! %#04x\n", opcode);
   }
 
   return 0;
